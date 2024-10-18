@@ -1,0 +1,211 @@
+-- Constants
+pi = math.rad(180)
+zero = Vector3.new(0, 0, 0)
+
+-- Private Methods
+function SolveArmIK(originCFF, targetPos, l1, l2, C1Off, Side) {
+	originCF = nil
+	if Side == "Left" {
+		originCF = originCFF*CFrame.new(Vector3.new(0, 0, C1Off.X), zero)
+	} else {
+		if Side == "Right" {
+			originCF = originCFF*CFrame.new(Vector3.new(0, 0, C1Off.X*-1), zero)
+		}
+	}
+	
+	localized = CFrame.toObjectSpace(originCF, CFrame.new(targetPos, zero))
+	localized = localized.Position
+	localizedUnit = Vector3.normalize(localized)
+	l3 = Vector3.magnitude(localized, zero)
+	
+	axis = Vector3.cross(Vector3.new(0, 0, -1), localizedUnit)
+	angle = math.acos(localizedUnit.Z*-1)
+	planeCF = originCF * CFrame.fromAxisAngle(axis, angle)
+	
+	if l3 < math.max(l2, l1) - math.min(l2, l1) {
+		return planeCF * CFrame.new(Vector3.new(0, 0, math.max(l2, l1) - math.min(l2, l1) - l3), zero), (pi/2)*-1, pi
+	} else {
+		if l3 > l1 + l2 {
+			return planeCF, pi/2, 0, l3
+		} else {
+			a1 = math.acos((((l2 * l2)*-1) + (l1 * l1) + (l3 * l3)) / (2 * l1 * l3)) * -1
+			a2 = math.acos(((l2 * l2) - (l1 * l1) + (l3 * l3)) / (2 * l2 * l3))
+
+			return planeCF, a1 + pi/2, a2 - a1	
+		}
+	}
+}
+
+function SolveLegIK(originCFF, targetPos, l1, l2, C1Off) {
+	originCF = originCFF*CFrame.new(Vector3.new(C1Off.X*-1,0,0), zero)
+	localized = CFrame.toObjectSpace(originCF, CFrame.new(targetPos, zero))
+	localized = localized.Position
+	localizedUnit = Vector3.normalize(localized)
+	l3 = Vector3.magnitude(localized, zero)
+	
+	axis = Vector3.cross(Vector3.new(0, 0, -1), localizedUnit*-1)
+	angle = math.acos(localizedUnit.Z*-1)
+	planeCF = originCF * CFrame.inverse(CFrame.fromAxisAngle(axis, angle))
+	
+	if l3 < math.max(l2, l1) - math.min(l2, l1) {
+		return planeCF * CFrame.new(Vector3.new(0, 0, math.max(l2, l1) - math.min(l2, l1) - l3), zero), (pi/2)*-1, pi
+	} else {
+		if l3 > l1 + l2 {
+			return planeCF, pi/2, 0, l3
+		} else {
+			a1 = math.acos((((l2 * l2)*-1) + (l1 * l1) + (l3 * l3)) / (2 * l1 * l3)) * -1
+			a2 = math.acos(((l2  * l2) - (l1 * l1) + (l3 * l3)) / (2 * l2 * l3))
+
+			return planeCF, pi/2-a1, (a2 - a1)*-1
+		}
+	}
+}
+
+function WorldCFrameToC0ObjectSpace(motor6DJoint, worldCFrame) {
+	part1CF = motor6DJoint.Part1.CFrame
+	part0 = motor6DJoint.Part0
+	c1Store = motor6DJoint.C1
+	c0Store = motor6DJoint.C0
+	relativeToPart0 = CFrame.inverse(part0.CFrame) * worldCFrame * c1Store
+
+	return relativeToPart0
+}
+
+-- Public Constructor
+event script.New.OnInvoke(character) {
+	self = table.create()
+	self["Torso"] = character.Torso
+	self["HumanoidRootPart"] = character.HumanoidRootPart
+	self["LeftArm"] = character:FindFirstChild("Left Arm")
+	self["RightArm"] = character:FindFirstChild("Right Arm")
+	self["LeftLeg"] = character:FindFirstChild("Left Leg")
+	self["RightLeg"] = character:FindFirstChild("Right Leg")
+	
+	leftShoulder = self.Torso:FindFirstChild("Left Shoulder")
+	rightShoulder = self.Torso:FindFirstChild("Right Shoulder")
+	leftHip = self.Torso:FindFirstChild("Left Hip")
+	rightHip = self.Torso:FindFirstChild("Right Hip")
+	rootJoint = self.HumanoidRootPart:FindFirstChild("RootJoint")
+	
+	c0s = table.create()
+	c0s["Left Shoulder"] = leftShoulder.C0
+	c0s["Right Shoulder"] = rightShoulder.C0
+	c0s["Left Hip"] = leftHip.C0
+	c0s["Right Hip"] = rightHip.C0
+	c0s["RootJoint"] = rootJoint.C0
+	self["C0s"] = c0s
+	
+	c1s = table.create()
+	c1s["Left Shoulder"] = leftShoulder.C1
+	c1s["Right Shoulder"] = rightShoulder.C1
+	c1s["Left Hip"] = leftHip.C1
+	c1s["Right Hip"] = rightHip.C1
+	c1s["RootJoint"] = rootJoint.C1
+	self["C1s"] = c1s
+	
+	part0s = table.create()
+	part0s["Left Shoulder"] = leftShoulder.Part0
+	part0s["Right Shoulder"] = rightShoulder.Part0
+	part0s["Left Hip"] = leftHip.Part0
+	part0s["Right Hip"] = rightHip.Part0
+	part0s["RootJoint"] = rootJoint.Part0
+	self["Part0s"] = part0s
+	
+	part1s = table.create()
+	part1s["Left Shoulder"] = leftShoulder.Part1
+	part1s["Right Shoulder"] = rightShoulder.Part1
+	part1s["Left Hip"] = leftHip.Part1
+	part1s["Right Hip"] = rightHip.Part1
+	part1s["RootJoint"] = rootJoint.Part1
+	self["Part1s"] = part1s
+	
+	self["LeftUpperArmLength"] = 1
+	self["LeftLowerArmLength"] = 1
+	
+	self["RightUpperArmLength"] = 1
+	self["RightLowerArmLength"] = 1
+	
+	self["LeftUpperLegLength"] = 1
+	self["LeftLowerLegLength"] = 1
+	
+	self["RightUpperLegLength"] = 1
+	self["RightLowerLegLength"] = 1
+	
+	self["TorsoIK"] = false
+	
+	
+-- Public Methods
+	
+	methods = Instance.new("BindableFunction", script)
+	event methods.OnInvoke(type, side, position) {
+		if type == "ArmIK" {
+			if side == "Left" {
+				OriginCF = self["Torso"]["CFrame"] * self["C0s"]["Left Shoulder"]
+				C1Off = self["C1s"]["Left Shoulder"]
+				PlaneCF, ShoulderAngle, ElbowAngle, l3 = SolveArmIK(OriginCF, position, self["LeftUpperArmLength"], self["LeftLowerArmLength"], C1Off, side)
+				
+				ShoulderAngleCFrame = CFrame.Angles(ShoulderAngle, 0, 0)
+				ElbowAngleCFrame = CFrame.Angles(ElbowAngle, 0, 0)
+				
+				ShoulderCF = PlaneCF * ShoulderAngleCFrame*CFrame.new(Vector3.new(0, (self["LeftUpperArmLength"]*-1) * 0.5, 0), zero)
+				ElbowCF = ShoulderCF * CFrame.new(Vector3.new(0, (self["LeftUpperArmLength"]*-1) * 0.5, 0), zero)* ElbowAngleCFrame * CFrame.new(Vector3.new(0, (self["LeftLowerArmLength"]*-1)*0.5, 0), zero) * CFrame.new(Vector3.new(0, (self.LeftArm.Size.Y-self["LeftLowerArmLength"])*0.5, 0), zero)
+				leftShoulder.C0 = WorldCFrameToC0ObjectSpace(leftShoulder, ElbowCF)
+			} else {
+				if side == "Right" {
+					OriginCF = self["Torso"]["CFrame"] * self["C0s"]["Right Shoulder"]
+					C1Off = self["C1s"]["Right Shoulder"]
+					PlaneCF, ShoulderAngle, ElbowAngle, l3 = SolveArmIK(OriginCF, position, self["RightUpperArmLength"], self["RightLowerArmLength"], C1Off, side)
+					
+					ShoulderAngleCFrame = CFrame.Angles(ShoulderAngle, 0, 0)
+					ElbowAngleCFrame = CFrame.Angles(ElbowAngle, 0, 0)
+					
+					ShoulderCF = PlaneCF * ShoulderAngleCFrame*CFrame.new(Vector3.new(0, (self["RightUpperArmLength"]*-1) * 0.5, 0), zero)
+					ElbowCF = ShoulderCF * CFrame.new(Vector3.new(0, (self["RightUpperArmLength"]*-1) * 0.5, 0), zero) * ElbowAngleCFrame * CFrame.new(Vector3.new(0, (self["RightLowerArmLength"]*-1)*0.5, 0), zero) * CFrame.new(Vector3.new(0, (self.RightArm.Size.Y-self["RightLowerArmLength"])*0.5, 0), zero)
+					rightShoulder.C0 = WorldCFrameToC0ObjectSpace(rightShoulder, ElbowCF)
+				}
+			}
+		}
+		
+		if type == "LegIK" {
+			if side == "Left" {
+				OriginCF = self["Torso"]["CFrame"] * self["C0s"]["Left Hip"]
+				C1Off = self["C1s"]["Left Hip"]
+				PlaneCF, ShoulderAngle, ElbowAngle, l3 = SolveLegIK(OriginCF*CFrame.Angles(0, pi/2, 0), position, self["LeftUpperLegLength"], self["LeftLowerLegLength"], C1Off)
+				
+				HipAngleCFrame = CFrame.Angles(ShoulderAngle, 0, 0)
+				KneeAngleCFrame = CFrame.Angles(ElbowAngle, 0, 0)
+
+				HipCF = PlaneCF * HipAngleCFrame*CFrame.new(Vector3.new(0,(self["LeftUpperLegLength"]*-1) * 0.5,0), zero)
+				KneeCF = HipCF * CFrame.new(Vector3.new(0, (self["LeftUpperLegLength"]*-1) * 0.5, 0), zero) * KneeAngleCFrame * CFrame.new(Vector3.new(0, (self["LeftLowerLegLength"]*-1)*0.5, 0), zero) * CFrame.new(Vector3.new(0, (self.LeftLeg.Size.Y-self["LeftLowerLegLength"])*0.5, 0), zero)
+				leftHip.C0 = WorldCFrameToC0ObjectSpace(leftHip, KneeCF)
+			} else {
+				if side == "Right" {
+					OriginCF = self["Torso"]["CFrame"] * self["C0s"]["Right Hip"]
+					C1Off = self["C1s"]["Right Hip"]
+					PlaneCF, ShoulderAngle, ElbowAngle, l3 = SolveLegIK(OriginCF*CFrame.Angles(0, (pi*-1)/2, 0), position, self["RightUpperLegLength"], self["RightLowerLegLength"], C1Off)
+					
+					HipAngleCFrame = CFrame.Angles(ShoulderAngle, 0, 0)
+					KneeAngleCFrame = CFrame.Angles(ElbowAngle, 0, 0)
+	
+					HipCF = PlaneCF * HipAngleCFrame*CFrame.new(Vector3.new(0,(self["RightUpperLegLength"]*-1) * 0.5,0), zero)
+					KneeCF = HipCF * CFrame.new(Vector3.new(0, (self["RightUpperLegLength"]*-1) * 0.5, 0), zero) * KneeAngleCFrame * CFrame.new(Vector3.new(0, (self["RightLowerLegLength"]*-1)*0.5, 0), zero) * CFrame.new(Vector3.new(0, (self.RightLeg.Size.Y-self["RightLowerLegLength"])*0.5, 0), zero)
+					rightHip.C0 = WorldCFrameToC0ObjectSpace(rightHip, KneeCF)
+				}
+			}
+		}
+		
+		if type == "Destroy" {
+			self = nil
+			leftShoulder = nil
+			rightShoulder = nil
+			leftHip = nil
+			rightHip = nil
+			rootJoint = nil
+			
+			methods:Destroy()
+			methods = nil
+		}
+	}
+	
+	return methods
+}
